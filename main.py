@@ -234,13 +234,134 @@ def revised_simplex_phase1(A, b, c_aux):
         x_B = np.dot(B_inv, b)
 
 
+
+# This function will handle phase 1 of the 2 phase method
+def phase1(Aaux, baux, caux):
+    """
+    Parameters:
+        - Aaux (numpy.ndarray): The auxiliary constraint matrix (m x n).
+        Make sure it ends with an identity matrix which will be our initial basis for phase 1
+        - baux (numpy.ndarray): The right-hand side vector (m x 1).
+        Make sure b wont take any negative value
+        - caux (numpy.ndarray): The auxiliary cost vector (1 x n).
+        Make sure it is [0,0,0....,0,1,1,...] format. The 0's will correspond to variables of the original problem.
+
+    Returns:
+        dict: A dictionary containing the following:
+              - 'status': 'optimal', 'infeasible', or 'unbounded'
+
+              - 'z': The value of the auxiliary objective function.
+              - 'x': The solution vector for Phase 1.
+              IF ARTIFICIAL VARIABLES OF PHASE 1 HAS A VALUE GREATER THAN 0 CONSIDER IT AS UNFEASIBLE
+              - 'basis': Indices of the basic variables.
+    """
+
+
+
+    # Dimensions of the problem
+    m, n = Aaux.shape
+
+    # Initialize basis indices (assuming the last m columns correspond to artificial variables)
+    basis = list(range(n - m, n))
+
+    # Build the initial tableau
+    tableau = np.zeros((m + 1, n + 1))
+    tableau[1:, :n] = Aaux # last m row first n col is Aaux
+    tableau[1:, -1] = baux.flatten() # last m row last col is baux
+    tableau[0, :n] = caux.flatten() # first row first n col is caux
+    # first row last col is 0
+
+    # We should substract last m columns from the first one by one to bring it to the standart form
+    for i in range(1,m+1):
+        tableau[0] -= tableau[i]
+    print(tableau)
+
+
+    while True:
+        # Step 1: Check for optimality (all reduced costs >= 0)
+        reduced_costs = tableau[0, :-1]
+        if np.all(reduced_costs >= 0):
+            break
+
+        # Step 2: Choose entering variable (smallest reduced cost)
+        entering = np.argmin(reduced_costs) # returns the index of the smallest value
+
+        # Bow we should determine the leaving variable
+        ratios = []
+
+        # For each row in constraint matrix
+        for i in range(1, m + 1):
+            # for valid ratios append them
+            if tableau[i, entering] > 0:
+                ratios.append(tableau[i, -1] / tableau[i, entering])
+            # for invalid ratios append inf to not choose them
+            else:
+                ratios.append(np.inf)
+        # Since we append ratios for each row in constraints the indexes in ratio array corresponds to their places in A,
+        # index of leaving variable in tableau is (its index in A) + 1
+        leaving = np.argmin(ratios) + 1
+
+        # No leaving variable means I can increase my objective value infinitely, tho I dont know whether I will need it or not in this case
+        if ratios[leaving - 1] == np.inf:
+            return {
+                'status': 'unbounded',
+                'z': None,
+                'x': None,
+                'basis': None,
+                'A': None
+            }
+
+        # Perform the pivot operation
+        pivot = tableau[leaving, entering]
+        # Divide leaving variable's row with pivot
+        tableau[leaving, :] /= pivot
+
+        # update rest of the tableau
+        for i in range(m + 1):
+            if i != leaving:
+                tableau[i, :] -= tableau[i, entering] * tableau[leaving, :]
+
+        # Update the basis
+        basis[leaving - 1] = entering
+        print(tableau, "\n\n\n")
+
+
+    # Write the solution
+    x = np.zeros(n)
+    for i, b in enumerate(basis):
+        x[b] = tableau[i + 1, -1]
+
+
+    z = tableau[0, -1]
+    A = tableau[1:, :n]
+
+    # Check feasibility of the original problem (z must be zero)
+    if abs(z) > 1e-6:
+        return {
+            'status': 'infeasible',
+            'z': z,
+            'x': x,
+            'basis': basis,
+            'A': A
+        }
+
+    return {
+        'status': 'optimal',
+        'z': z,
+        'x': x,
+        'basis': basis,
+        'A': A
+    }
+
+
 # Example usage
-A = np.array([[2, 1, -1, 0], [1, 2, 0, -1]])
-b = np.array([2, 3])
-c = np.array([1, 2, 0, 0])
+A = np.array([[0.3, 0.1, 1, 0, 1, 0, 0], [0.5, 0.5, 0, 0, 0, 1, 0], [0.6, 0.4, 0, -1, 0, 0, 1]])
+b = np.array([2.7, 6, 6])
+c = np.array([0, 0, 0, 0, 1, 1, 1])
 mode = -1  # Minimization
 
-result = revised_simplexgpt(A, b, c, mode)
+result = phase1(A, b, c)
 print(result)
+
 
 
